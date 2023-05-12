@@ -2470,15 +2470,23 @@ function print_within_stacktrace(io, s...; color=:normal, bold=false)
     end
 end
 
-function show_tuple_as_call(io::IO, name::Symbol, sig::Type;
+function show_tuple_as_call(out::IO, name::Symbol, sig::Type;
                             demangle=false, kwargs=nothing, argnames=nothing,
                             qualified=false, hasfirst=true)
     # print a method signature tuple for a lambda definition
     if sig === Tuple
-        print(io, demangle ? demangle_function_name(name) : name, "(...)")
+        print(out, demangle ? demangle_function_name(name) : name, "(...)")
         return
     end
     tv = Any[]
+    if get(out, :limit, false)::Bool
+        io = IOBuffer()
+        if isa(out, IOContext)
+            io = IOContext(io, out)
+        end
+    else
+        io = out
+    end
     env_io = io
     while isa(sig, UnionAll)
         push!(tv, sig.var)
@@ -2516,7 +2524,56 @@ function show_tuple_as_call(io::IO, name::Symbol, sig::Type;
     end
     print_within_stacktrace(io, ")", bold=true)
     show_method_params(io, tv)
+    if get(out, :limit, false)::Bool
+        sz = get(out, :displaysize, (typemax(Int), typemax(Int)))::Tuple{Int, Int}
+        str = String(take!(unwrapcontext(io)[1]))
+        print(out, depth_limit(str, sz[2]))
+    end
     nothing
+end
+
+function depth_limit(str::String, n::Int)
+    depth = 0
+    width_at = Int[]
+    strwid = 0
+    in_escape = false
+    for c in str
+        if c == '}'
+            depth -= 1
+        elseif c == '\e'
+            in_escape = true
+        end
+        in_escape || (strwid += textwidth(c))
+        if depth > 0
+            if depth > length(width_at)
+                resize!(width_at, depth)
+                width_at[depth] = 0
+            end
+            in_escape || (width_at[depth] += textwidth(c))
+        end
+        if c == '{'
+            depth += 1
+        elseif in_escape && c == 'm'
+            in_escape = false
+        end
+    end
+    limit_at = length(width_at) + 1
+    while strwid > n
+        limit_at -= 1
+        limit_at <= 0 && return str
+        strwid -= width_at[limit_at]
+    end
+    output = IOBuffer()
+    depth = 0
+    for c in str
+        c == '}' && (depth -= 1)
+        depth < limit_at && write(output, c)
+        if c == '{'
+            depth += 1
+            depth == limit_at && write(output, "…")
+        end
+    end
+    return String(take!(output))
 end
 
 function print_type_bicolor(io, type; kwargs...)
