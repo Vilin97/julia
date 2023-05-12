@@ -1058,3 +1058,29 @@ end
 @test !Base.ismutationfree(Vector{UInt64})
 
 @test Base.ismutationfree(Type{Union{}})
+
+# don't use `lim=-1` for method matches for `code_typed` and its family
+let tt = Tuple{typeof(length), Union{Vector{Int},String}}
+    world = Base.get_world_counter()
+    interp = Core.Compiler.NativeInterpreter(world)
+    lim = Core.Compiler.get_max_methods(interp, length)
+    @test length(Base._methods_by_ftype(tt, nothing, lim, world)) ==
+          length(Base.return_types(length, (Union{Vector{Int},String},); world, interp)) ==
+          length(code_typed(length, (Union{Vector{Int},String},); world, interp))
+end
+
+# use the max_methods setting in `code_typed` and its family
+
+Base.Experimental.@max_methods 2 function max_methods_reflection end
+max_methods_reflection(::Any) = :Any
+max_methods_reflection(::Number) = :Number
+max_methods_reflection(::Int) = :Int
+
+@test_throws "max_methods_reflection(::Any)" Base.return_types(max_methods_reflection, (Any,))
+@test_throws "max_methods_reflection(::Any)" code_typed(max_methods_reflection, (Any,))
+@test isa(Base.return_types(max_methods_reflection, (Any,); max_methods=3), Vector)
+@test isa(Base.return_types(max_methods_reflection, (Any,); max_methods=-1), Vector)
+
+Base.Experimental.@max_methods 3 function max_methods_reflection end
+@test isa(Base.return_types(max_methods_reflection, (Any,)), Vector)
+@test isa(code_typed(max_methods_reflection, (Any,)), Vector)

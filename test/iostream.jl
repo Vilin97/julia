@@ -169,6 +169,6 @@ end
 end
 
 @testset "inference" begin
-    @test all(T -> T <: Union{UInt, Int}, Base.return_types(unsafe_write, (IO, Ptr{UInt8}, UInt)))
-    @test all(T -> T === Bool, Base.return_types(eof, (IO,)))
+    @test all(T -> T <: Union{UInt, Int}, Base.return_types(unsafe_write, (IO, Ptr{UInt8}, UInt); max_methods=-1))
+    @test all(T -> T === Bool, Base.return_types(eof, (IO,); max_methods=-1))
 end
